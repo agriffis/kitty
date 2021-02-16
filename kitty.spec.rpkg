@@ -4,23 +4,19 @@
 %bcond_with doc
 %endif
 
-Name:           kitty
-Version:        0.19.3
-Release:        1%{?dist}
+Name:           {{{git_name name="kitty"}}}
+Version:        {{{git_version}}}
+Release:        {{{git_revision}}}%{?dist}
 Summary:        Cross-platform, fast, feature full, GPU based terminal emulator
 
 # BSD:          docs/_templates/searchbox.html
 # zlib:         glfw/
 License:        GPLv3 and zlib and BSD
 URL:            https://sw.kovidgoyal.net/kitty
-Source0:        https://github.com/kovidgoyal/kitty/archive/v%{version}/%{name}-%{version}.tar.gz
+Source0:        {{{git_pack}}}
 # allow skipping documentation build
 # (EPEL8's Sphinx is too old and does not have sphinx-build)
 Patch0:         kitty-0.18.3-no_sphinx.diff
-
-# Add AppData manifest file
-# * https://github.com/kovidgoyal/kitty/pull/2088
-Source1:        https://raw.githubusercontent.com/kovidgoyal/kitty/46c0951751444e4f4994008f0d2dcb41e49389f4/kitty/data/%{name}.appdata.xml
 
 BuildRequires:  desktop-file-utils
 BuildRequires:  gcc
@@ -116,7 +112,9 @@ This package contains the documentation for %{name}.
 
 
 %prep
-%autosetup -p1
+{{{git_setup_macro}}}
+
+sed -i '/^str_version:/s/=.*/= "%{version}"/' kitty/constants.py
 
 # test_multiprocessing_spawn not passed in 0.18.2
 # * https://github.com/kovidgoyal/kitty/issues/2881
@@ -141,7 +139,7 @@ find -type f -name "*.py*" -exec chmod -x "{}"  \;
     --prefix=%{buildroot}%{_prefix} \
     --update-check-interval=0       \
     --debug
-install -m0644 -Dp %{SOURCE1} %{buildroot}%{_metainfodir}/%{name}.appdata.xml
+install -m0644 -Dp %{name}.appdata.xml %{buildroot}%{_metainfodir}/%{name}.appdata.xml
 
 # script-without-shebang '__init__.py'
 find %{buildroot} -type f -name "*.py*" -exec chmod -x "{}"  \;
@@ -186,6 +184,9 @@ desktop-file-validate %{buildroot}/%{_datadir}/applications/*.desktop
 
 
 %changelog
+* {{{git_changelog_date}}} Aron Griffis <aron@scampersand.com> - {{{git_changelog_version}}}
+- Nightly build from git master
+
 * Sat Dec 19 2020 Artem Polishchuk <ego.cordatus@gmail.com> - 0.19.3-1
 - build(update): 0.19.3
 

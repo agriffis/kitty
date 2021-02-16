@@ -1,22 +1,9 @@
 #!/bin/bash
 
-function get_cmake_var {
-    declare v
-    v=$(grep -m1 "^set($1\\s" < CMakeLists.txt)
-    v=$(sed -E 's/^\S+\s+"?//; s/[")].*//' <<<"$v")
-    [[ -n $v ]] && echo "$v" || die "can't get $1"
-}
-
-function neovim_dev_version {
-    declare v=$(cached neovim_dev_version)
+function git_version {
+    declare v=$(cached git_version)
 
     if [[ -z $v ]]; then
-        declare major minor patch pre
-        major=$(get_cmake_var NVIM_VERSION_MAJOR) || exit
-        minor=$(get_cmake_var NVIM_VERSION_MINOR) || exit
-        patch=$(get_cmake_var NVIM_VERSION_PATCH) || exit
-        pre=$(get_cmake_var NVIM_VERSION_PRERELEASE) || exit
-
         # git describe --first-parent origin/master
         # v0.4.0-1080-g971e0ca90
         declare master_describe master_tag master_commits master_hash
@@ -24,22 +11,22 @@ function neovim_dev_version {
         read master_tag master_commits master_hash <<<"${master_describe//-/ }"
         [[ $master_tag == v* && $master_commits -gt 0 && -n $master_hash ]] || die "failed git describe"
 
-        v="v$major.$minor.$patch${pre}+${master_commits}-${master_hash}"
-    fi
+        # get the future kitty version from the changelog
+        declare changelog_version v x rest
+        changelog_version="$(awk '$1 ~ /^[0-9]+\./ && $2 ~ /^\[/{print; exit}' < docs/changelog.rst)"
+        read v x rest <<<"$changelog_version"
 
-    output "$v"
-}
+        # remove brackets from $x
+        x=${x#\[}; x=${x%\]}
 
-function git_version {
-    declare v=$(cached git_version)
-
-    if [[ -z $v ]]; then
-        neovim_dev_version &> /dev/null  # preload cache w/o command subst
-
-        v=$(neovim_dev_version) # v0.5.0-dev+1080-g971e0ca90
-        v=${v#v}                # 0.5.0-dev+1080-g971e0ca90
-        v=${v/-/\~}             # 0.5.0~dev+1080-g971e0ca90
-        v=${v//[+-]/.}          # 0.5.0~dev.1080.g971e0ca90
+        case $x in
+            future)
+                v="$v~$x.${master_commits}.${master_hash}" ;;
+            2???-??-??)
+                v="$v.0.git.${master_commits}.${master_hash}" ;;
+            *)
+                die "can't figure out version from changelog" ;;
+        esac
     fi
 
     output "$v"
