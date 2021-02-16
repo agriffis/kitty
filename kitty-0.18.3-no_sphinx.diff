@@ -1,0 +1,18 @@
+--- kitty-0.18.3/setup.py.no_sphinx	2020-08-11 01:49:32.000000000 -0700
++++ kitty-0.18.3/setup.py	2020-08-24 17:42:39.080608804 -0700
+@@ -823,10 +823,11 @@
+ 
+ 
+ def create_linux_bundle_gunk(ddir: str, libdir_name: str) -> None:
+-    if not os.path.exists('docs/_build/html'):
+-        run_tool(['make', 'docs'])
+-    copy_man_pages(ddir)
+-    copy_html_docs(ddir)
++    if os.path.exists('/usr/bin/sphinx-build'):
++        if not os.path.exists('docs/_build/html'):
++            run_tool(['make', 'docs'])
++        copy_man_pages(ddir)
++        copy_html_docs(ddir)
+     icdir = os.path.join(ddir, 'share', 'icons', 'hicolor', '256x256', 'apps')
+     safe_makedirs(icdir)
+     shutil.copy2('logo/kitty.png', icdir)
