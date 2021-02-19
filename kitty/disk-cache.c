@@ -91,7 +91,7 @@ open_cache_file(const char *cache_path) {
     }
 #else
     size_t sz = strlen(cache_path) + 16;
-    char *buf = calloc(1, sz);
+    FREE_AFTER_FUNCTION char *buf = calloc(1, sz);
     if (!buf) { errno = ENOMEM; return -1; }
     snprintf(buf, sz - 1, "%s/disk-cache-XXXXXXXXXXXX", cache_path);
     while (fd < 0) {
@@ -99,7 +99,6 @@ open_cache_file(const char *cache_path) {
         if (fd > -1 || errno != EINTR) break;
     }
     if (fd > -1) unlink(buf);
-    free(buf);
 #endif
     return fd;
 }
@@ -171,8 +170,8 @@ typedef struct {
 static void
 defrag(DiskCache *self) {
     int new_cache_file = -1;
-    DefragEntry *defrag_entries = NULL;
-    uint8_t *buf = NULL;
+    FREE_AFTER_FUNCTION DefragEntry *defrag_entries = NULL;
+    FREE_AFTER_FUNCTION uint8_t *buf = NULL;
     const size_t bufsz = 1024 * 1024;
     bool lock_released = false, ok = false;
 
@@ -235,8 +234,6 @@ cleanup:
             if (s) s->pos_in_cache_file = e->new_offset;
         }
     }
-    if (defrag_entries) free(defrag_entries);
-    if (buf) free(buf);
     if (new_cache_file > -1) safe_close(new_cache_file, __FILE__, __LINE__);
 }
 
@@ -484,7 +481,7 @@ add_to_disk_cache(PyObject *self_, const void *key, size_t key_sz, const void *d
     if (!ensure_state(self)) return false;
     if (key_sz > MAX_KEY_SIZE) { PyErr_SetString(PyExc_KeyError, "cache key is too long"); return false; }
     CacheEntry *s = NULL;
-    uint8_t *copied_data = malloc(data_sz);
+    FREE_AFTER_FUNCTION uint8_t *copied_data = malloc(data_sz);
     if (!copied_data) { PyErr_NoMemory(); return false; }
     memcpy(copied_data, data, data_sz);
 
@@ -503,8 +500,6 @@ add_to_disk_cache(PyObject *self_, const void *key, size_t key_sz, const void *d
     self->total_size += s->data_sz;
 end:
     mutex(unlock);
-
-    if (copied_data) free(copied_data);
     if (PyErr_Occurred()) return false;
     wakeup_write_loop(self);
     return true;
@@ -658,6 +653,22 @@ disk_cache_wait_for_write(PyObject *self_, monotonic_t timeout) {
 size_t
 disk_cache_total_size(PyObject *self) { return ((DiskCache*)self)->total_size; }
 
+size_t
+disk_cache_num_cached_in_ram(PyObject *self_) {
+    DiskCache *self = (DiskCache*)self_;
+    unsigned long ans = 0;
+    if (ensure_state(self)) {
+        mutex(lock);
+        CacheEntry *tmp, *s;
+        HASH_ITER(hh, self->entries, s, tmp) {
+            if (s->written_to_disk && s->data) ans++;
+        }
+        mutex(unlock);
+    }
+    return ans;
+}
+
+
 #define PYWRAP(name) static PyObject* py##name(DiskCache *self, PyObject *args)
 #define PA(fmt, ...) if (!PyArg_ParseTuple(args, fmt, __VA_ARGS__)) return NULL;
 PYWRAP(ensure_state) {
@@ -776,15 +787,8 @@ remove_from_ram(PyObject *self, PyObject *callable) {
 }
 
 static PyObject*
-num_cached_in_ram(DiskCache *self, PyObject *args UNUSED) {
-    unsigned long ans = 0;
-    mutex(lock);
-    CacheEntry *tmp, *s;
-    HASH_ITER(hh, self->entries, s, tmp) {
-        if (s->written_to_disk && s->data) ans++;
-    }
-    mutex(unlock);
-    return PyLong_FromUnsignedLong(ans);
+num_cached_in_ram(PyObject *self, PyObject *args UNUSED) {
+    return PyLong_FromUnsignedLong(disk_cache_num_cached_in_ram(self));
 }
 
 
@@ -795,7 +799,7 @@ static PyMethodDef methods[] = {
     {"add", add, METH_VARARGS, NULL},
     {"remove", pyremove, METH_VARARGS, NULL},
     {"remove_from_ram", remove_from_ram, METH_O, NULL},
-    {"num_cached_in_ram", (PyCFunction)num_cached_in_ram, METH_NOARGS, NULL},
+    {"num_cached_in_ram", num_cached_in_ram, METH_NOARGS, NULL},
     {"get", get, METH_VARARGS, NULL},
     {"wait_for_write", wait_for_write, METH_VARARGS, NULL},
     {"size_on_disk", size_on_disk, METH_NOARGS, NULL},

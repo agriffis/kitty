@@ -26,11 +26,6 @@ except ImportError:
     Image = None
 
 
-def relpath(name):
-    base = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(base, name)
-
-
 def send_command(screen, cmd, payload=b''):
     cmd = '\033_G' + cmd
     if payload:
@@ -267,6 +262,10 @@ class TestGraphics(BaseTest):
         check_data()
         dc.clear()
 
+        st = time.monotonic()
+        while dc.size_on_disk() and time.monotonic() - st < 20:
+            time.sleep(0.01)
+        self.assertEqual(dc.size_on_disk(), 0)
         for frame in range(32):
             add(f'1:{frame}', f'{frame:02d}' * 8)
         dc.wait_for_write()
