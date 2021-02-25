@@ -1492,12 +1492,12 @@ if is_macos:
 g('shortcuts.tab')  # {{{
 k('next_tab', 'kitty_mod+right', 'next_tab', _('Next tab'))
 if is_macos:
-    k('next_tab', 'ctrl+tab', 'next_tab', _('Next tab'), add_to_docs=False)
     k('next_tab', 'shift+cmd+]', 'next_tab', _('Next tab'), add_to_docs=False)
+    k('next_tab', 'ctrl+tab', 'next_tab', _('Next tab'), add_to_docs=False)
 k('previous_tab', 'kitty_mod+left', 'previous_tab', _('Previous tab'))
 if is_macos:
-    k('previous_tab', 'shift+ctrl+tab', 'previous_tab', _('Previous tab'), add_to_docs=False)
     k('previous_tab', 'shift+cmd+[', 'previous_tab', _('Previous tab'), add_to_docs=False)
+    k('previous_tab', 'shift+ctrl+tab', 'previous_tab', _('Previous tab'), add_to_docs=False)
 k('new_tab', 'kitty_mod+t', 'new_tab', _('New tab'))
 if is_macos:
     k('new_tab', 'cmd+t', 'new_tab', _('New tab'), add_to_docs=False)
@@ -1572,6 +1572,8 @@ k('toggle_fullscreen', 'kitty_mod+f11', 'toggle_fullscreen', _('Toggle fullscree
 k('toggle_maximized', 'kitty_mod+f10', 'toggle_maximized', _('Toggle maximized'))
 k('input_unicode_character', 'kitty_mod+u', 'kitten unicode_input', _('Unicode input'))
 k('edit_config_file', 'kitty_mod+f2', 'edit_config_file', _('Edit config file'))
+if is_macos:
+    k('edit_config_file', 'cmd+,', 'edit_config_file', _('Edit config file'), add_to_docs=False)
 k('kitty_shell', 'kitty_mod+escape', 'kitty_shell window', _('Open the kitty command shell'), long_text=_('''
 Open the kitty shell in a new window/tab/overlay/os_window to control kitty using commands.'''))
 k('increase_background_opacity', 'kitty_mod+a>m', 'set_background_opacity +0.1', _('Increase background opacity'))
