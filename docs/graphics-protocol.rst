@@ -193,16 +193,17 @@ compression, then you must provide the ``S`` key with the size of the PNG data.
 Compression
 ~~~~~~~~~~~~~
 
-The client can send compressed image data to the terminal emulator, by specifying the
-``o`` key. Currently, only zlib based deflate compression is supported, which is specified using
-``o=z``. For example::
+The client can send compressed image data to the terminal emulator, by
+specifying the ``o`` key. Currently, only :rfc:`1950` ZLIB based deflate
+compression is supported, which is specified using ``o=z``. For example::
 
     <ESC>_Gf=24,s=10,v=20,o=z;<payload><ESC>\
 
 This is the same as the example from the RGB data section, except that the
-payload is now compressed using deflate. The terminal emulator will decompress
-it before rendering. You can specify compression for any format. The terminal
-emulator will decompress before interpreting the pixel data.
+payload is now compressed using deflate (this occurs prior to base64-encoding).
+The terminal emulator will decompress it before rendering. You can specify
+compression for any format. The terminal emulator will decompress before
+interpreting the pixel data.
 
 
 The transmission medium
@@ -268,7 +269,7 @@ sequence of escape codes to the terminal emulator::
     <ESC>_Gm=0;<encoded pixel data last chunk><ESC>\
 
 Note that only the first escape code needs to have the full set of control
-codes such as width, height, format etc. Subsequent chunks must have
+codes such as width, height, format etc. Subsequent chunks **must** have
 only the ``m`` key. The client **must** finish sending all chunks for a single image
 before sending any other graphics related escape codes. Note that the cursor
 position used to display the image **must** be the position when the final chunk is

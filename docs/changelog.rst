@@ -42,6 +42,9 @@ To update |kitty|, :doc:`follow the instructions <binary>`.
 
 - Double clicking on empty tab bar area now opens a new tab (:iss:`3201`)
 
+- When passing a directory or a non-executable file as the program to run to
+  kitty open it with the shell, instead of just failing.
+
 - Linux: Fix rendering of emoji followed by the graphics variation selector not
   being colored with some fonts (:iss:`3211`)
 
@@ -51,6 +54,8 @@ To update |kitty|, :doc:`follow the instructions <binary>`.
 - Panel kitten: Allow setting WM_CLASS (:iss:`3233`)
 
 - macOS: Add menu items to close the OS window and the current tab (:pull:`3240`, :iss:`3246`)
+
+- macOS: Allow opening script and command files with kitty (:iss:`3366`)
 
 - Also detect ``gemini://`` URLs when hovering with the mouse (:iss:`3370`)
 
@@ -82,6 +87,9 @@ To update |kitty|, :doc:`follow the instructions <binary>`.
 
 - hints kitten: When using the linenumber action with a background action,
   preserve the working directory (:iss:`3352`)
+
+- Graphics protocol: Fix suppression of responses not working for chunked
+  transmission (:iss:`3375`)
 
 
 0.19.3 [2020-12-19]
