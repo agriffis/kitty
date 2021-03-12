@@ -421,7 +421,7 @@ Value of ``d``       Meaning
 ``n`` or ``N``       Delete newest image with the specified number, specified using the ``I`` key. If you specify a ``p`` key for the
                      placement id as well, then only the placement with the specified number and placement id will be deleted.
 ``c`` or ``C``       Delete all placements that intersect with the current cursor position.
-``c`` or ``C``       Delete all placements that intersect with the current cursor position.
+``f`` or ``F``       Delete animation frames.
 ``p`` or ``P``       Delete all placements that intersect a specific cell, the cell is specified using the ``x`` and ``y`` keys
 ``q`` or ``Q``       Delete all placements that intersect a specific cell having a specific z-index. The cell and z-index is specified using the ``x``, ``y`` and ``z`` keys.
 ``x`` or ``X``       Delete all placements that intersect the specified column, specified using the ``x`` key.
@@ -432,8 +432,8 @@ Value of ``d``       Meaning
 
 Note when all placements for an image have been deleted, the image is also
 deleted, if the capital letter form above is specified. Also, when the terminal
-is running out of quota space for image, images without placements will be
-preferentially deleted.
+is running out of quota space for new images, existing images without
+placements will be preferentially deleted.
 
 Some examples::
 
