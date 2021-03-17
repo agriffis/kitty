@@ -212,6 +212,52 @@ realloc_lb(LineBuf *old, unsigned int lines, unsigned int columns, index_type *n
     return ans;
 }
 
+static inline bool
+is_selection_empty(const Selection *s) {
+    int start_y = (int)s->start.y - (int)s->start_scrolled_by, end_y = (int)s->end.y - (int)s->end_scrolled_by;
+    return s->start.x == s->end.x && s->start.in_left_half_of_cell == s->end.in_left_half_of_cell && start_y == end_y;
+}
+
+static inline void
+index_selection(const Screen *self, Selections *selections, bool up) {
+    for (size_t i = 0; i < selections->count; i++) {
+        Selection *s = selections->items + i;
+        if (!is_selection_empty(s)) {
+            if (up) {
+                if (s->start.y == 0) s->start_scrolled_by += 1;
+                else s->start.y--;
+                if (s->end.y == 0) s->end_scrolled_by += 1;
+                else s->end.y--;
+            } else {
+                if (s->start.y >= self->lines - 1) s->start_scrolled_by -= 1;
+                else s->start.y++;
+                if (s->end.y >= self->lines - 1) s->end_scrolled_by -= 1;
+                else s->end.y++;
+            }
+        }
+    }
+}
+
+
+#define INDEX_GRAPHICS(amtv) { \
+    bool is_main = self->linebuf == self->main_linebuf; \
+    static ScrollData s; \
+    s.amt = amtv; s.limit = is_main ? -self->historybuf->ynum : 0; \
+    s.has_margins = self->margin_top != 0 || self->margin_bottom != self->lines - 1; \
+    s.margin_top = top; s.margin_bottom = bottom; \
+    grman_scroll_images(self->grman, &s, self->cell_size); \
+}
+
+
+#define INDEX_DOWN \
+    if (self->overlay_line.is_active) deactivate_overlay_line(self); \
+    linebuf_reverse_index(self->linebuf, top, bottom); \
+    linebuf_clear_line(self->linebuf, top); \
+    INDEX_GRAPHICS(1) \
+    self->is_dirty = true; \
+    index_selection(self, &self->selections, false);
+
+
 static bool
 screen_resize(Screen *self, unsigned int lines, unsigned int columns) {
     if (self->overlay_line.is_active) deactivate_overlay_line(self);
@@ -236,6 +282,12 @@ screen_resize(Screen *self, unsigned int lines, unsigned int columns) {
     index_type x = self->cursor->x, y = self->cursor->y;
     LineBuf *n = realloc_lb(self->main_linebuf, lines, columns, &num_content_lines_before, &num_content_lines_after, self->historybuf, &x, &y, &self->as_ansi_buf);
     if (n == NULL) return false;
+
+
+    int lines_to_fill = -1;
+    if (is_main && OPT(scrollback_fill_enlarged_window)) {
+        lines_to_fill = (lines - self->main_linebuf->ynum) + linebuf_continued_lines_count(self->main_linebuf, self->cursor->y + 1);
+    }
     Py_CLEAR(self->main_linebuf); self->main_linebuf = n;
     if (is_main) setup_cursor();
     grman_resize(self->main_grman, self->lines, lines, self->columns, columns);
@@ -270,6 +322,15 @@ screen_resize(Screen *self, unsigned int lines, unsigned int columns) {
     if (cursor_is_beyond_content) {
         self->cursor->y = num_content_lines;
         if (self->cursor->y >= self->lines) { self->cursor->y = self->lines - 1; screen_index(self); }
+    }
+    if (lines_to_fill > 0) {
+        lines_to_fill -= linebuf_continued_lines_count(self->main_linebuf, self->cursor->y + 1);
+        const unsigned int top = 0, bottom = self->lines-1;
+        while (lines_to_fill-- > 0) {
+            if (!historybuf_pop_line(self->historybuf, self->alt_linebuf->line)) break;
+            INDEX_DOWN;
+            linebuf_copy_line_to(self->main_linebuf, self->alt_linebuf->line, 0);
+        }
     }
     return true;
 }
@@ -368,12 +429,6 @@ move_widened_char(Screen *self, CPUCell* cpu_cell, GPUCell *gpu_cell, index_type
     }
     *dest_cpu = src_cpu;
     *dest_gpu = src_gpu;
-}
-
-static inline bool
-is_selection_empty(const Selection *s) {
-    int start_y = (int)s->start.y - (int)s->start_scrolled_by, end_y = (int)s->end.y - (int)s->end_scrolled_by;
-    return s->start.x == s->end.x && s->start.in_left_half_of_cell == s->end.in_left_half_of_cell && start_y == end_y;
 }
 
 static inline bool
@@ -1034,35 +1089,6 @@ screen_cursor_to_column(Screen *self, unsigned int column) {
     }
 }
 
-static inline void
-index_selection(const Screen *self, Selections *selections, bool up) {
-    for (size_t i = 0; i < selections->count; i++) {
-        Selection *s = selections->items + i;
-        if (!is_selection_empty(s)) {
-            if (up) {
-                if (s->start.y == 0) s->start_scrolled_by += 1;
-                else s->start.y--;
-                if (s->end.y == 0) s->end_scrolled_by += 1;
-                else s->end.y--;
-            } else {
-                if (s->start.y >= self->lines - 1) s->start_scrolled_by -= 1;
-                else s->start.y++;
-                if (s->end.y >= self->lines - 1) s->end_scrolled_by -= 1;
-                else s->end.y++;
-            }
-        }
-    }
-}
-
-#define INDEX_GRAPHICS(amtv) { \
-    bool is_main = self->linebuf == self->main_linebuf; \
-    static ScrollData s; \
-    s.amt = amtv; s.limit = is_main ? -self->historybuf->ynum : 0; \
-    s.has_margins = self->margin_top != 0 || self->margin_bottom != self->lines - 1; \
-    s.margin_top = top; s.margin_bottom = bottom; \
-    grman_scroll_images(self->grman, &s, self->cell_size); \
-}
-
 #define INDEX_UP \
     if (self->overlay_line.is_active) deactivate_overlay_line(self); \
     linebuf_index(self->linebuf, top, bottom); \
@@ -1095,14 +1121,6 @@ screen_scroll(Screen *self, unsigned int count) {
         INDEX_UP;
     }
 }
-
-#define INDEX_DOWN \
-    if (self->overlay_line.is_active) deactivate_overlay_line(self); \
-    linebuf_reverse_index(self->linebuf, top, bottom); \
-    linebuf_clear_line(self->linebuf, top); \
-    INDEX_GRAPHICS(1) \
-    self->is_dirty = true; \
-    index_selection(self, &self->selections, false);
 
 void
 screen_reverse_index(Screen *self) {
