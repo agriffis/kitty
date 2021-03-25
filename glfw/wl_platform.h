@@ -89,11 +89,6 @@ typedef void (* PFN_wl_egl_window_resize)(struct wl_egl_window*, int, int, int, 
 #define wl_egl_window_destroy _glfw.wl.egl.window_destroy
 #define wl_egl_window_resize _glfw.wl.egl.window_resize
 
-#define _GLFW_DECORATION_WIDTH 4
-#define _GLFW_DECORATION_TOP 24
-#define _GLFW_DECORATION_VERTICAL (_GLFW_DECORATION_TOP + _GLFW_DECORATION_WIDTH)
-#define _GLFW_DECORATION_HORIZONTAL (2 * _GLFW_DECORATION_WIDTH)
-
 typedef enum _GLFWdecorationSideWayland
 {
     mainWindow,
@@ -132,7 +127,7 @@ typedef struct _GLFWwindowWayland
     } xdg;
 
     _GLFWcursor*                currentCursor;
-    double                      cursorPosX, cursorPosY;
+    double                      cursorPosX, cursorPosY, allCursorPosX, allCursorPosY;
 
     char*                       title;
     char                        appId[256];
@@ -156,7 +151,7 @@ typedef struct _GLFWwindowWayland
 
     struct {
         bool                               serverSide;
-        struct wl_buffer*                  buffer;
+        struct wl_buffer*                  edge_buffer;
         _GLFWdecorationWayland             top, left, right, bottom;
         int                                focus;
     } decorations;
@@ -167,6 +162,9 @@ typedef struct _GLFWwindowWayland
         struct wl_callback *current_wl_callback;
     } frameCallbackData;
 
+    struct {
+        unsigned int width, top, horizontal, vertical;
+    } decoration_metrics;
 
 } _GLFWwindowWayland;
 
@@ -263,7 +261,6 @@ typedef struct _GLFWlibraryWayland
     size_t dataOffersCounter;
     _GLFWWaylandDataOffer dataOffers[8];
     char* primarySelectionString;
-    GLFWWLCursorThemes cursor_themes;
 } _GLFWlibraryWayland;
 
 // Wayland-specific per-monitor data

@@ -42,8 +42,63 @@
 #include <sys/mman.h>
 
 
-static void setCursorImage(_GLFWwindow* window)
+static struct wl_buffer* createShmBuffer(const GLFWimage* image, bool is_opaque, bool init_data)
 {
+    struct wl_shm_pool* pool;
+    struct wl_buffer* buffer;
+    int stride = image->width * 4;
+    int length = image->width * image->height * 4;
+    void* data;
+    int fd, i;
+
+    fd = createAnonymousFile(length);
+    if (fd < 0)
+    {
+        _glfwInputError(GLFW_PLATFORM_ERROR,
+                        "Wayland: Creating a buffer file for %d B failed: %s",
+                        length, strerror(errno));
+        return NULL;
+    }
+
+    data = mmap(NULL, length, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (data == MAP_FAILED)
+    {
+        _glfwInputError(GLFW_PLATFORM_ERROR,
+                        "Wayland: mmap failed: %s", strerror(errno));
+        close(fd);
+        return NULL;
+    }
+
+    pool = wl_shm_create_pool(_glfw.wl.shm, fd, length);
+
+    close(fd);
+    if (init_data) {
+        unsigned char* source = (unsigned char*) image->pixels;
+        unsigned char* target = data;
+        for (i = 0;  i < image->width * image->height;  i++, source += 4)
+        {
+            unsigned int alpha = source[3];
+
+            *target++ = (unsigned char) ((source[2] * alpha) / 255);
+            *target++ = (unsigned char) ((source[1] * alpha) / 255);
+            *target++ = (unsigned char) ((source[0] * alpha) / 255);
+            *target++ = (unsigned char) alpha;
+        }
+    }
+
+    buffer =
+        wl_shm_pool_create_buffer(pool, 0,
+                                  image->width,
+                                  image->height,
+                                  stride, is_opaque ? WL_SHM_FORMAT_XRGB8888 : WL_SHM_FORMAT_ARGB8888);
+    munmap(data, length);
+    wl_shm_pool_destroy(pool);
+
+    return buffer;
+}
+
+static void
+setCursorImage(_GLFWwindow* window, bool on_theme_change) {
     _GLFWcursorWayland defaultCursor = {.shape = GLFW_ARROW_CURSOR};
     _GLFWcursorWayland* cursorWayland = window->cursor ? &window->cursor->wl : &defaultCursor;
     struct wl_cursor_image* image = NULL;
@@ -54,9 +109,8 @@ static void setCursorImage(_GLFWwindow* window)
     if (cursorWayland->scale < 0) {
         buffer = cursorWayland->buffer;
         toggleTimer(&_glfw.wl.eventLoopData, _glfw.wl.cursorAnimationTimer, 0);
-    } else
-    {
-        if (cursorWayland->scale != scale) {
+    } else {
+        if (on_theme_change || cursorWayland->scale != scale) {
             struct wl_cursor *newCursor = NULL;
             struct wl_cursor_theme *theme = glfw_wlc_theme_for_scale(scale);
             if (theme) newCursor = _glfwLoadCursor(cursorWayland->shape, theme);
@@ -131,7 +185,7 @@ static bool checkScaleChange(_GLFWwindow* window)
     {
         window->wl.scale = scale;
         wl_surface_set_buffer_scale(window->wl.surface, scale);
-        setCursorImage(window);
+        setCursorImage(window, false);
         return true;
     }
     if (window->wl.monitorsCount > 0 && !window->wl.initial_scale_notified) {
@@ -172,26 +226,26 @@ static void resizeFramebuffer(_GLFWwindow* window)
 
     // Top decoration.
     wp_viewport_set_destination(window->wl.decorations.top.viewport,
-                                window->wl.width, _GLFW_DECORATION_TOP);
+                                window->wl.width, window->wl.decoration_metrics.top);
     wl_surface_commit(window->wl.decorations.top.surface);
 
     // Left decoration.
     wp_viewport_set_destination(window->wl.decorations.left.viewport,
-                                _GLFW_DECORATION_WIDTH, window->wl.height + _GLFW_DECORATION_TOP);
+                                window->wl.decoration_metrics.width, window->wl.height + window->wl.decoration_metrics.top);
     wl_surface_commit(window->wl.decorations.left.surface);
 
     // Right decoration.
     wl_subsurface_set_position(window->wl.decorations.right.subsurface,
-                               window->wl.width, -_GLFW_DECORATION_TOP);
+                               window->wl.width, -window->wl.decoration_metrics.top);
     wp_viewport_set_destination(window->wl.decorations.right.viewport,
-                                _GLFW_DECORATION_WIDTH, window->wl.height + _GLFW_DECORATION_TOP);
+                                window->wl.decoration_metrics.width, window->wl.height + window->wl.decoration_metrics.top);
     wl_surface_commit(window->wl.decorations.right.surface);
 
     // Bottom decoration.
     wl_subsurface_set_position(window->wl.decorations.bottom.subsurface,
-                               -_GLFW_DECORATION_WIDTH, window->wl.height);
+                               -window->wl.decoration_metrics.width, window->wl.height);
     wp_viewport_set_destination(window->wl.decorations.bottom.viewport,
-                                window->wl.width + _GLFW_DECORATION_HORIZONTAL, _GLFW_DECORATION_WIDTH);
+                                window->wl.width + window->wl.decoration_metrics.horizontal, window->wl.decoration_metrics.width);
     wl_surface_commit(window->wl.decorations.bottom.surface);
 }
 
@@ -226,137 +280,12 @@ static void dispatchChangesAfterConfigure(_GLFWwindow *window, int32_t width, in
 }
 
 
-/*
- * Create a new, unique, anonymous file of the given size, and
- * return the file descriptor for it. The file descriptor is set
- * CLOEXEC. The file is immediately suitable for mmap()'ing
- * the given size at offset zero.
- *
- * The file should not have a permanent backing store like a disk,
- * but may have if XDG_RUNTIME_DIR is not properly implemented in OS.
- *
- * The file name is deleted from the file system.
- *
- * The file is suitable for buffer sharing between processes by
- * transmitting the file descriptor over Unix sockets using the
- * SCM_RIGHTS methods.
- *
- * posix_fallocate() is used to guarantee that disk space is available
- * for the file at the given size. If disk space is insufficient, errno
- * is set to ENOSPC. If posix_fallocate() is not supported, program may
- * receive SIGBUS on accessing mmap()'ed file contents instead.
- */
-static int createAnonymousFile(off_t size)
-{
-    int ret, fd = -1, shm_anon = 0;
-#ifdef HAS_MEMFD_CREATE
-    fd = memfd_create("glfw-shared", MFD_CLOEXEC | MFD_ALLOW_SEALING);
-    if (fd < 0) return -1;
-    // We can add this seal before calling posix_fallocate(), as the file
-    // is currently zero-sized anyway.
-    //
-    // There is also no need to check for the return value, we couldn’t do
-    // anything with it anyway.
-    fcntl(fd, F_ADD_SEALS, F_SEAL_SHRINK | F_SEAL_SEAL);
-#elif defined(SHM_ANON)
-    fd = shm_open(SHM_ANON, O_RDWR | O_CLOEXEC, 0600);
-    if (fd < 0) return -1;
-    shm_anon = 1;
-#else
-    static const char template[] = "/glfw-shared-XXXXXX";
-    const char* path;
-    char* name;
-
-    path = getenv("XDG_RUNTIME_DIR");
-    if (!path)
-    {
-        errno = ENOENT;
-        return -1;
-    }
-
-    name = calloc(strlen(path) + sizeof(template), 1);
-    strcpy(name, path);
-    strcat(name, template);
-
-    fd = createTmpfileCloexec(name);
-
-    free(name);
-
-    if (fd < 0)
-        return -1;
-#endif
-    // posix_fallocate does not work on SHM descriptors
-    ret = shm_anon ? ftruncate(fd, size) : posix_fallocate(fd, 0, size);
-    if (ret != 0)
-    {
-        close(fd);
-        errno = ret;
-        return -1;
-    }
-    return fd;
-}
-
-static struct wl_buffer* createShmBuffer(const GLFWimage* image)
-{
-    struct wl_shm_pool* pool;
-    struct wl_buffer* buffer;
-    int stride = image->width * 4;
-    int length = image->width * image->height * 4;
-    void* data;
-    int fd, i;
-
-    fd = createAnonymousFile(length);
-    if (fd < 0)
-    {
-        _glfwInputError(GLFW_PLATFORM_ERROR,
-                        "Wayland: Creating a buffer file for %d B failed: %s",
-                        length, strerror(errno));
-        return NULL;
-    }
-
-    data = mmap(NULL, length, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    if (data == MAP_FAILED)
-    {
-        _glfwInputError(GLFW_PLATFORM_ERROR,
-                        "Wayland: mmap failed: %s", strerror(errno));
-        close(fd);
-        return NULL;
-    }
-
-    pool = wl_shm_create_pool(_glfw.wl.shm, fd, length);
-
-    close(fd);
-    unsigned char* source = (unsigned char*) image->pixels;
-    unsigned char* target = data;
-    for (i = 0;  i < image->width * image->height;  i++, source += 4)
-    {
-        unsigned int alpha = source[3];
-
-        *target++ = (unsigned char) ((source[2] * alpha) / 255);
-        *target++ = (unsigned char) ((source[1] * alpha) / 255);
-        *target++ = (unsigned char) ((source[0] * alpha) / 255);
-        *target++ = (unsigned char) alpha;
-    }
-
-    buffer =
-        wl_shm_pool_create_buffer(pool, 0,
-                                  image->width,
-                                  image->height,
-                                  stride, WL_SHM_FORMAT_ARGB8888);
-    munmap(data, length);
-    wl_shm_pool_destroy(pool);
-
-    return buffer;
-}
-
 static void createDecoration(_GLFWdecorationWayland* decoration,
                              struct wl_surface* parent,
-                             struct wl_buffer* buffer, bool opaque,
+                             struct wl_buffer* buffer,
                              int x, int y,
                              int width, int height)
 {
-    struct wl_region* region;
-
     decoration->surface = wl_compositor_create_surface(_glfw.wl.compositor);
     decoration->subsurface =
         wl_subcompositor_get_subsurface(_glfw.wl.subcompositor,
@@ -366,49 +295,39 @@ static void createDecoration(_GLFWdecorationWayland* decoration,
                                                       decoration->surface);
     wp_viewport_set_destination(decoration->viewport, width, height);
     wl_surface_attach(decoration->surface, buffer, 0, 0);
-
-    if (opaque)
-    {
-        region = wl_compositor_create_region(_glfw.wl.compositor);
-        wl_region_add(region, 0, 0, width, height);
-        wl_surface_set_opaque_region(decoration->surface, region);
-        wl_surface_commit(decoration->surface);
-        wl_region_destroy(region);
-    }
-    else
-        wl_surface_commit(decoration->surface);
+    wl_surface_commit(decoration->surface);
 }
 
 static void createDecorations(_GLFWwindow* window)
 {
     unsigned char data[] = { 224, 224, 224, 255 };
     const GLFWimage image = { 1, 1, data };
-    bool opaque = (data[3] == 255);
+    bool is_opaque = (data[3] == 255);
 
     if (!_glfw.wl.viewporter || !window->decorated || window->wl.decorations.serverSide)
         return;
 
-    if (!window->wl.decorations.buffer)
-        window->wl.decorations.buffer = createShmBuffer(&image);
-    if (!window->wl.decorations.buffer)
+    if (!window->wl.decorations.edge_buffer)
+        window->wl.decorations.edge_buffer = createShmBuffer(&image, is_opaque, true);
+    if (!window->wl.decorations.edge_buffer)
         return;
 
     createDecoration(&window->wl.decorations.top, window->wl.surface,
-                     window->wl.decorations.buffer, opaque,
-                     0, -_GLFW_DECORATION_TOP,
-                     window->wl.width, _GLFW_DECORATION_TOP);
+                     window->wl.decorations.edge_buffer,
+                     0, -window->wl.decoration_metrics.top,
+                     window->wl.width, window->wl.decoration_metrics.top);
     createDecoration(&window->wl.decorations.left, window->wl.surface,
-                     window->wl.decorations.buffer, opaque,
-                     -_GLFW_DECORATION_WIDTH, -_GLFW_DECORATION_TOP,
-                     _GLFW_DECORATION_WIDTH, window->wl.height + _GLFW_DECORATION_TOP);
+                     window->wl.decorations.edge_buffer,
+                     -window->wl.decoration_metrics.width, -window->wl.decoration_metrics.top,
+                     window->wl.decoration_metrics.width, window->wl.height + window->wl.decoration_metrics.top);
     createDecoration(&window->wl.decorations.right, window->wl.surface,
-                     window->wl.decorations.buffer, opaque,
-                     window->wl.width, -_GLFW_DECORATION_TOP,
-                     _GLFW_DECORATION_WIDTH, window->wl.height + _GLFW_DECORATION_TOP);
+                     window->wl.decorations.edge_buffer,
+                     window->wl.width, -window->wl.decoration_metrics.top,
+                     window->wl.decoration_metrics.width, window->wl.height + window->wl.decoration_metrics.top);
     createDecoration(&window->wl.decorations.bottom, window->wl.surface,
-                     window->wl.decorations.buffer, opaque,
-                     -_GLFW_DECORATION_WIDTH, window->wl.height,
-                     window->wl.width + _GLFW_DECORATION_HORIZONTAL, _GLFW_DECORATION_WIDTH);
+                     window->wl.decorations.edge_buffer,
+                     -window->wl.decoration_metrics.width, window->wl.height,
+                     window->wl.width + window->wl.decoration_metrics.horizontal, window->wl.decoration_metrics.width);
 }
 
 static void destroyDecoration(_GLFWdecorationWayland* decoration)
@@ -622,9 +541,9 @@ static void xdgToplevelHandleConfigure(void* data,
     }
     window->wl.fullscreened = fullscreen;
     if (!fullscreen) {
-        if (window->decorated && !window->wl.decorations.serverSide && window->wl.decorations.buffer) {
-            width -= _GLFW_DECORATION_HORIZONTAL;
-            height -= _GLFW_DECORATION_VERTICAL;
+        if (window->decorated && !window->wl.decorations.serverSide && window->wl.decorations.edge_buffer) {
+            width -= window->wl.decoration_metrics.horizontal;
+            height -= window->wl.decoration_metrics.vertical;
         }
     }
     dispatchChangesAfterConfigure(window, width, height);
@@ -746,7 +665,7 @@ static void incrementCursorImage(_GLFWwindow* window)
         {
             cursor->wl.currentImage += 1;
             cursor->wl.currentImage %= cursor->wl.cursor->image_count;
-            setCursorImage(window);
+            setCursorImage(window, false);
             toggleTimer(&_glfw.wl.eventLoopData, _glfw.wl.cursorAnimationTimer, cursor->wl.cursor->image_count > 1);
             return;
         }
@@ -883,6 +802,10 @@ int _glfwPlatformCreateWindow(_GLFWwindow* window,
                               const _GLFWctxconfig* ctxconfig,
                               const _GLFWfbconfig* fbconfig)
 {
+    window->wl.decoration_metrics.width = 4;
+    window->wl.decoration_metrics.top = 24;
+    window->wl.decoration_metrics.horizontal = 2 * window->wl.decoration_metrics.width;
+    window->wl.decoration_metrics.vertical = window->wl.decoration_metrics.width + window->wl.decoration_metrics.top;
     window->wl.transparent = fbconfig->transparent;
     strncpy(window->wl.appId, wndconfig->wl.appId, sizeof(window->wl.appId));
 
@@ -961,8 +884,8 @@ void _glfwPlatformDestroyWindow(_GLFWwindow* window)
     if (window->wl.xdg.decoration)
         zxdg_toplevel_decoration_v1_destroy(window->wl.xdg.decoration);
 
-    if (window->wl.decorations.buffer)
-        wl_buffer_destroy(window->wl.decorations.buffer);
+    if (window->wl.decorations.edge_buffer)
+        wl_buffer_destroy(window->wl.decorations.edge_buffer);
 
     if (window->wl.native)
         wl_egl_window_destroy(window->wl.native);
@@ -1087,13 +1010,13 @@ void _glfwPlatformGetWindowFrameSize(_GLFWwindow* window,
     if (window->decorated && !window->monitor && !window->wl.decorations.serverSide)
     {
         if (top)
-            *top = _GLFW_DECORATION_TOP;
+            *top = window->wl.decoration_metrics.top;
         if (left)
-            *left = _GLFW_DECORATION_WIDTH;
+            *left = window->wl.decoration_metrics.width;
         if (right)
-            *right = _GLFW_DECORATION_WIDTH;
+            *right = window->wl.decoration_metrics.width;
         if (bottom)
-            *bottom = _GLFW_DECORATION_WIDTH;
+            *bottom = window->wl.decoration_metrics.width;
     }
 }
 
@@ -1361,7 +1284,7 @@ int _glfwPlatformCreateCursor(_GLFWcursor* cursor,
                               const GLFWimage* image,
                               int xhot, int yhot, int count UNUSED)
 {
-    cursor->wl.buffer = createShmBuffer(image);
+    cursor->wl.buffer = createShmBuffer(image, false, true);
     if (!cursor->wl.buffer)
         return false;
 
@@ -1521,7 +1444,7 @@ void _glfwPlatformSetCursor(_GLFWwindow* window, _GLFWcursor* cursor)
 
     if (window->cursorMode == GLFW_CURSOR_NORMAL)
     {
-        setCursorImage(window);
+        setCursorImage(window, false);
     }
     else if (window->cursorMode == GLFW_CURSOR_DISABLED)
     {
@@ -2114,6 +2037,16 @@ frame_handle_redraw(void *data, struct wl_callback *callback, uint32_t time UNUS
     wl_callback_destroy(callback);
 }
 
+void
+_glfwPlatformChangeCursorTheme(void) {
+    glfw_wlc_destroy();
+    _GLFWwindow *w = _glfw.windowListHead;
+    while (w) {
+        setCursorImage(w, true);
+        w = w->next;
+    }
+
+}
 
 //////////////////////////////////////////////////////////////////////////
 //////                        GLFW native API                       //////
