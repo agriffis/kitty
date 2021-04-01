@@ -225,12 +225,20 @@ index_selection(const Screen *self, Selections *selections, bool up) {
         if (!is_selection_empty(s)) {
             if (up) {
                 if (s->start.y == 0) s->start_scrolled_by += 1;
-                else s->start.y--;
+                else {
+                    s->start.y--;
+                    if (s->input_start.y) s->input_start.y--;
+                    if (s->input_current.y) s->input_current.y--;
+                }
                 if (s->end.y == 0) s->end_scrolled_by += 1;
                 else s->end.y--;
             } else {
                 if (s->start.y >= self->lines - 1) s->start_scrolled_by -= 1;
-                else s->start.y++;
+                else {
+                    s->start.y++;
+                    if (s->input_start.y < self->lines - 1) s->input_start.y++;
+                    if (s->input_current.y < self->lines - 1) s->input_current.y++;
+                }
                 if (s->end.y >= self->lines - 1) s->end_scrolled_by -= 1;
                 else s->end.y++;
             }
@@ -622,7 +630,7 @@ screen_draw_overlay_text(Screen *self, const char *utf8_text) {
     self->overlay_line.ynum = self->cursor->y;
     self->overlay_line.xstart = self->cursor->x;
     self->overlay_line.xnum = 0;
-    uint32_t codepoint = 0, state = UTF8_ACCEPT;
+    uint32_t codepoint = 0; UTF8State state = UTF8_ACCEPT;
     bool orig_line_wrap_mode = self->modes.mDECAWM;
     self->modes.mDECAWM = false;
     self->cursor->reverse ^= true;

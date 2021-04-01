@@ -5,11 +5,15 @@
  */
 
 #include "state.h"
+#include "cleanup.h"
 #include "fonts.h"
 #include "monotonic.h"
 #include "charsets.h"
 #include <structmember.h>
 #include "glfw-wrapper.h"
+#ifndef __APPLE__
+#include "freetype_render_ui_text.h"
+#endif
 extern bool cocoa_make_window_resizable(void *w, bool);
 extern void cocoa_focus_window(void *w);
 extern long cocoa_window_number(void *w);
@@ -381,11 +385,37 @@ application_close_requested_callback(int flags) {
     }
 }
 
+static inline void get_window_dpi(GLFWwindow *w, double *x, double *y);
+
 #ifdef __APPLE__
 static bool
 apple_file_open_callback(const char* filepath) {
     set_cocoa_pending_action(OPEN_FILE, filepath);
     return true;
+}
+#else
+
+static FreeTypeRenderCtx csd_title_render_ctx = NULL;
+
+static bool
+draw_text_callback(GLFWwindow *window, const char *text, uint32_t fg, uint32_t bg, uint8_t *output_buf, size_t width, size_t height, float x_offset, float y_offset, size_t right_margin) {
+    if (!set_callback_window(window)) return false;
+    if (!csd_title_render_ctx) {
+        csd_title_render_ctx = create_freetype_render_context(NULL, true, false);
+        if (!csd_title_render_ctx) {
+            if (PyErr_Occurred()) PyErr_Print();
+            return false;
+        }
+    }
+    double xdpi, ydpi;
+    get_window_dpi(window, &xdpi, &ydpi);
+    unsigned px_sz = (unsigned)(global_state.callback_os_window->font_sz_in_pts * ydpi / 72.);
+    px_sz = MIN(px_sz, 3 * height / 4);
+    static char title[2048];
+    snprintf(title, sizeof(title), "🐱 %s", text);
+    bool ok = render_single_line(csd_title_render_ctx, title, px_sz, fg, bg, output_buf, width, height, x_offset, y_offset, right_margin);
+    if (!ok && PyErr_Occurred()) PyErr_Print();
+    return ok;
 }
 #endif
 // }}}
@@ -855,6 +885,8 @@ glfw_init(PyObject UNUSED *self, PyObject *args) {
     if (ans == Py_True) {
 #ifdef __APPLE__
         glfwSetCocoaFileOpenCallback(apple_file_open_callback);
+#else
+        glfwSetDrawTextFunction(draw_text_callback);
 #endif
         OSWindow w = {0};
         set_os_window_dpi(&w);
@@ -1388,16 +1420,16 @@ static PyMethodDef module_methods[] = {
 void cleanup_glfw(void) {
     if (logo.pixels) free(logo.pixels);
     logo.pixels = NULL;
+#ifndef __APPLE__
+    release_freetype_render_context(csd_title_render_ctx);
+#endif
 }
 
 // constants {{{
 bool
 init_glfw(PyObject *m) {
     if (PyModule_AddFunctions(m, module_methods) != 0) return false;
-    if (Py_AtExit(cleanup_glfw) != 0) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to register the glfw exit handler");
-        return false;
-    }
+    register_at_exit_cleanup_func(GLFW_CLEANUP_FUNC, cleanup_glfw);
 #define ADDC(n) if(PyModule_AddIntConstant(m, #n, n) != 0) return false;
     ADDC(GLFW_RELEASE);
     ADDC(GLFW_PRESS);

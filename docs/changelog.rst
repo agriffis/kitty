@@ -108,6 +108,9 @@ To update |kitty|, :doc:`follow the instructions <binary>`.
 - Fix marking of text not working on lines that contain zero cells
   (:iss:`3403`)
 
+- Fix the selection getting changed if the screen contents scroll while
+  the selection is in progress (:iss:`3431`)
+
 
 0.19.3 [2020-12-19]
 -------------------
@@ -147,6 +150,9 @@ To update |kitty|, :doc:`follow the instructions <binary>`.
 - Wayland: Add support for the text input protocol (:iss:`3410`)
 
 - Wayland: Fix mouse handling when using client side decorations
+
+- GNOME/Wayland: Improve window decorations the titlebar now shows the window
+  title (:iss:`3284`)
 
 - Add an option, :opt:`detect_urls` to control whether kitty will detect URLs
   when the mouse moves over them (:pull:`3118`)

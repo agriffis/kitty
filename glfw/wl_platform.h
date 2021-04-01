@@ -53,7 +53,6 @@ typedef VkBool32 (APIENTRY *PFN_vkGetPhysicalDeviceWaylandPresentationSupportKHR
 #include "wl_cursors.h"
 
 #include "wayland-xdg-shell-client-protocol.h"
-#include "wayland-viewporter-client-protocol.h"
 #include "wayland-xdg-decoration-unstable-v1-client-protocol.h"
 #include "wayland-relative-pointer-unstable-v1-client-protocol.h"
 #include "wayland-pointer-constraints-unstable-v1-client-protocol.h"
@@ -91,21 +90,27 @@ typedef void (* PFN_wl_egl_window_resize)(struct wl_egl_window*, int, int, int, 
 
 typedef enum _GLFWdecorationSideWayland
 {
-    mainWindow,
-    topDecoration,
-    leftDecoration,
-    rightDecoration,
-    bottomDecoration,
-
+    CENTRAL_WINDOW,
+    TOP_DECORATION,
+    LEFT_DECORATION,
+    RIGHT_DECORATION,
+    BOTTOM_DECORATION,
 } _GLFWdecorationSideWayland;
 
-typedef struct _GLFWdecorationWayland
-{
-    struct wl_surface*          surface;
-    struct wl_subsurface*       subsurface;
-    struct wp_viewport*         viewport;
+typedef struct _GLFWWaylandBufferPair {
+    struct wl_buffer *a, *b, *front, *back;
+    struct { uint8_t *a, *b, *front, *back; } data;
+    bool has_pending_update;
+    size_t size_in_bytes, width, height, stride;
+} _GLFWWaylandBufferPair;
 
-} _GLFWdecorationWayland;
+typedef struct _GLFWWaylandCSDEdge {
+    struct wl_surface *surface;
+    struct wl_subsurface *subsurface;
+    _GLFWWaylandBufferPair buffer;
+    int x, y;
+} _GLFWWaylandCSDEdge;
+
 
 // Wayland-specific per-window data
 //
@@ -150,10 +155,23 @@ typedef struct _GLFWwindowWayland
     bool                        fullscreened;
 
     struct {
-        bool                               serverSide;
-        struct wl_buffer*                  edge_buffer;
-        _GLFWdecorationWayland             top, left, right, bottom;
-        int                                focus;
+        bool serverSide;
+        _GLFWdecorationSideWayland focus;
+        _GLFWWaylandCSDEdge top, left, right, bottom;
+
+        struct {
+            uint8_t *data;
+            size_t size;
+        } mapping;
+
+        struct {
+            int width, height, scale;
+            bool focused;
+        } for_window_state;
+
+        struct {
+            unsigned int width, top, horizontal, vertical;
+        } metrics;
     } decorations;
 
     struct {
@@ -161,10 +179,6 @@ typedef struct _GLFWwindowWayland
         void(*callback)(unsigned long long id);
         struct wl_callback *current_wl_callback;
     } frameCallbackData;
-
-    struct {
-        unsigned int width, top, horizontal, vertical;
-    } decoration_metrics;
 
 } _GLFWwindowWayland;
 
@@ -207,7 +221,6 @@ typedef struct _GLFWlibraryWayland
     struct wl_data_device*      dataDevice;
     struct xdg_wm_base*         wmBase;
     struct zxdg_decoration_manager_v1*      decorationManager;
-    struct wp_viewporter*       viewporter;
     struct zwp_relative_pointer_manager_v1* relativePointerManager;
     struct zwp_pointer_constraints_v1*      pointerConstraints;
     struct zwp_idle_inhibit_manager_v1*     idleInhibitManager;
