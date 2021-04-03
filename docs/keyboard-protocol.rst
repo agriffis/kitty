@@ -140,14 +140,17 @@ sub-field for the shifted key, like this::
 Modifiers
 ~~~~~~~~~~~~~~
 
-This protocol supports four modifier keys, :kbd:`shift, alt, ctrl and super`.
-Here super is either the *Windows/Linux* key or the *Cmd* key on mac keyboards.
-Modifiers are encoded as a bit field with::
+This protocol supports six modifier keys, :kbd:`shift, alt, ctrl, super, hyper
+and meta`. Here :kbd:`super` is either the *Windows/Linux* key or the *Cmd* key on
+mac keyboards. :kbd:`hyper` and :kbd:`meta` are typically present only on X11
+based systems with special XKB rules. Modifiers are encoded as a bit field with::
 
-    shift 0b1     (1)
-    alt   0b10    (2)
-    ctrl  0b100   (4)
-    super 0b1000  (8)
+    shift 0b1      (1)
+    alt   0b10     (2)
+    ctrl  0b100    (4)
+    super 0b1000   (8)
+    hyper 0b10000  (16)
+    meta  0b100000 (32)
 
 In the escape code, the modifier value is encoded as a decimal number which is
 ``1 + actual modifiers``. So to represent :kbd:`shift` only, the value would be ``1 +
@@ -542,10 +545,11 @@ compatibility reasons.
    "RAISE_VOLUME", "``57438 u``", "MUTE_VOLUME", "``57439 u``"
    "LEFT_SHIFT", "``57440 u``", "LEFT_CONTROL", "``57441 u``"
    "LEFT_ALT", "``57442 u``", "LEFT_SUPER", "``57443 u``"
-   "LEFT_HYPER", "``57444 u``", "RIGHT_SHIFT", "``57445 u``"
-   "RIGHT_CONTROL", "``57446 u``", "RIGHT_ALT", "``57447 u``"
-   "RIGHT_SUPER", "``57448 u``", "RIGHT_HYPER", "``57449 u``"
-   "ISO_LEVEL3_SHIFT", "``57450 u``", "ISO_LEVEL5_SHIFT", "``57451 u``"
+   "LEFT_HYPER", "``57444 u``", "LEFT_META", "``57445 u``"
+   "RIGHT_SHIFT", "``57446 u``", "RIGHT_CONTROL", "``57447 u``"
+   "RIGHT_ALT", "``57448 u``", "RIGHT_SUPER", "``57449 u``"
+   "RIGHT_HYPER", "``57450 u``", "RIGHT_META", "``57451 u``"
+   "ISO_LEVEL3_SHIFT", "``57452 u``", "ISO_LEVEL5_SHIFT", "``57453 u``"
 
 .. end functional key table
 .. }}}
