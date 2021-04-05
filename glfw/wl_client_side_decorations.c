@@ -11,14 +11,79 @@
 #include <sys/mman.h>
 #include <errno.h>
 #include <string.h>
+#include <stdlib.h>
 
 #define decs window->wl.decorations
 
 #define ARGB(a, r, g, b) (((a) << 24) | ((r) << 16) | ((g) << 8) | (b))
+#define A(x) (((x) >> 24) & 0xff)
+#define R(x) (((x) >> 16) & 0xff)
+#define G(x) (((x) >> 8) & 0xff)
+#define B(x) ((x) & 0xff)
 #define SWAP(x, y) do { __typeof__(x) SWAP = x; x = y; y = SWAP; } while (0)
 
 static const uint32_t passive_bg_color = 0xffeeeeee;
 static const uint32_t active_bg_color = 0xffdddad6;
+typedef float kernel_type;
+
+static void
+build_blur_kernel(kernel_type *blur_kernel, const size_t size, kernel_type sigma) {
+    // 1D Normalized Gaussian
+    const kernel_type half = size / (kernel_type)2;
+	kernel_type sum = 0;
+	for (size_t i = 0; i < size; i++) {
+		kernel_type f = (i - half);
+		blur_kernel[i] = (kernel_type)exp(- f * f / sigma);
+		sum += blur_kernel[i];
+	}
+	for (size_t i = 0; i < size; i++) blur_kernel[i] /= sum;
+}
+
+static void
+blur_mask(kernel_type *image_data, ssize_t width, ssize_t height, ssize_t kernel_size, kernel_type sigma, kernel_type *scratch, kernel_type *blur_kernel, ssize_t margin) {
+    (void)margin;
+    build_blur_kernel(blur_kernel, kernel_size, sigma);
+    const size_t half = kernel_size / 2;
+
+    for (ssize_t y = 0; y < height; y++) {
+        kernel_type *s = image_data + y * width, *d = scratch + y * width;
+        for (ssize_t x = 0; x < width; x++) {
+            kernel_type a = 0;
+            for (ssize_t k = 0; k < kernel_size; k++) {
+                const ssize_t px = x + k - half;
+                if (0 <= px && px < width) a += s[px] * blur_kernel[k];
+            }
+            d[x] = a;
+        }
+    }
+
+    for (ssize_t y = 0; y < height; y++) {
+        kernel_type *d = image_data + y * width;
+        for (ssize_t x = 0; x < width; x++) {
+            kernel_type a = 0;
+            for (ssize_t k = 0; k < kernel_size; k++) {
+                const ssize_t py = y + k - half;
+                if (0 <= py && py < height) {
+                    kernel_type *s = scratch + py * width;
+                    a += s[x] * blur_kernel[k];
+                }
+            }
+            d[x] = a;
+        }
+    }
+}
+
+static kernel_type*
+create_shadow_mask(size_t width, size_t height, size_t margin, size_t kernel_size, kernel_type base_alpha, kernel_type sigma) {
+    kernel_type *mask = calloc(sizeof(kernel_type), 2 * width * height + kernel_size);
+    if (!mask) return NULL;
+    for (size_t y = margin; y < height - margin; y++) {
+        kernel_type *row = mask + y * width;
+        for (size_t x = margin; x < width - margin; x++) row[x] = base_alpha;
+    }
+    blur_mask(mask, width, height, kernel_size, sigma, mask + width * height, (kernel_type*)(mask + 2 * width * height), margin);
+    return mask;
+}
 
 static void
 swap_buffers(_GLFWWaylandBufferPair *pair) {
@@ -48,14 +113,53 @@ alloc_buffer_pair(_GLFWWaylandBufferPair *pair, struct wl_shm_pool *pool, uint8_
     pair->data.front = pair->data.a; pair->data.back = pair->data.b;
 }
 
+#define st decs.shadow_tile
+static size_t
+create_shadow_tile(_GLFWwindow *window) {
+    const size_t margin = decs.bottom.buffer.height;
+    if (st.data && st.for_decoration_size == margin) return margin;
+    st.for_decoration_size = margin;
+    free(st.data);
+    st.segments = 7;
+    st.stride = st.segments * margin;
+    st.corner_size = margin * (st.segments - 1) / 2;
+    kernel_type* mask = create_shadow_mask(st.stride, st.stride, margin, 2 * margin + 1, (kernel_type)0.7, 32 * margin);
+    st.data = malloc(sizeof(uint32_t) * st.stride * st.stride);
+    if (st.data) for (size_t i = 0; i < st.stride * st.stride; i++) st.data[i] = ((uint8_t)(mask[i] * 255)) << 24;
+    free(mask);
+    return margin;
+}
+
+
 static void
 render_title_bar(_GLFWwindow *window, bool to_front_buffer) {
     const bool is_focused = window->id == _glfw.focusedWindowId;
     uint32_t bg_color = is_focused ? active_bg_color : passive_bg_color;
     uint8_t *output = to_front_buffer ? decs.top.buffer.data.front : decs.top.buffer.data.back;
+
+    // render shadow part
+    const size_t margin = create_shadow_tile(window);
+    const size_t edge_segment_size = st.corner_size - margin;
+    const uint8_t divisor = is_focused ? 1 : 2;
+    for (size_t y = 0; y < margin; y++) {
+        // left segment
+        uint32_t *s = st.data + y * st.stride + margin;
+        uint32_t *d = (uint32_t*)(output + y * decs.top.buffer.stride);
+        for (size_t x = 0; x < edge_segment_size; x++) d[x] = (A(s[x]) / divisor) << 24;
+        // middle segment
+        s += edge_segment_size;
+        size_t limit = decs.top.buffer.width > edge_segment_size ? decs.top.buffer.width - edge_segment_size : 0;
+        for (size_t x = edge_segment_size, sx = 0; x < limit; x++, sx = (sx + 1) % margin) d[x] = (A(s[sx]) / divisor) << 24;
+        // right segment
+        s += margin;
+        for (size_t x = limit; x < decs.top.buffer.width; x++, s++) d[x] = (A(*s) / divisor) << 24;
+    }
+
+    // render text part
+    output += decs.top.buffer.stride * margin;
     if (window->wl.title && window->wl.title[0] && _glfw.callbacks.draw_text) {
         uint32_t fg_color = is_focused ? 0xff444444 : 0xff888888;
-        if (_glfw.callbacks.draw_text((GLFWwindow*)window, window->wl.title, fg_color, bg_color, output, decs.top.buffer.width, decs.top.buffer.height, 0, 0, 0)) return;
+        if (_glfw.callbacks.draw_text((GLFWwindow*)window, window->wl.title, fg_color, bg_color, output, decs.top.buffer.width, decs.top.buffer.height - margin, 0, 0, 0)) return;
     }
     for (uint32_t *px = (uint32_t*)output, *end = (uint32_t*)(output + decs.top.buffer.size_in_bytes); px < end; px++) {
         *px = bg_color;
@@ -69,19 +173,74 @@ update_title_bar(_GLFWwindow *window) {
 }
 
 static void
-render_edge(_GLFWWaylandBufferPair *pair) {
-    for (uint32_t *px = (uint32_t*)pair->data.front, *end = (uint32_t*)(pair->data.front + pair->size_in_bytes); px < end; px++) {
-        *px = active_bg_color;
+render_edges(_GLFWwindow *window) {
+    const size_t margin = create_shadow_tile(window);
+    if (!st.data) return;  // out of memory
+
+    // bottom edge
+    uint32_t *src = st.data + (st.segments - 1) * margin * st.stride;
+    for (size_t y = 0; y < margin; y++) {
+        uint32_t *d = (uint32_t*)(decs.bottom.buffer.data.front + y * decs.bottom.buffer.stride);
+        uint32_t *s = src + st.stride * y;
+        // left corner
+        for (size_t x = 0; x < st.corner_size && x < decs.bottom.buffer.width; x++) d[x] = s[x];
+        // middle
+        size_t pos = st.corner_size, limit = decs.bottom.buffer.width > st.corner_size ? decs.bottom.buffer.width - st.corner_size : 0;
+        s += st.corner_size;
+        while (pos < limit) {
+            uint32_t *p = d + pos;
+            for (size_t x = 0; x < margin && pos + x < limit; x++) p[x] = s[x];
+            pos += margin;
+        }
+        // right corner
+        s += margin;
+        for (size_t x = 0; x < st.corner_size && limit + x < decs.bottom.buffer.width; x++) d[limit + x] = s[x];
     }
-    for (uint32_t *px = (uint32_t*)pair->data.back, *end = (uint32_t*)(pair->data.back + pair->size_in_bytes); px < end; px++) {
-        *px = passive_bg_color;
+
+    // upper corners
+    for (size_t y = 0; y < st.corner_size && y < decs.left.buffer.height; y++) {
+        uint32_t *left_src = st.data + st.stride * y;
+        uint32_t *left_dest = (uint32_t*)(decs.left.buffer.data.front + y * decs.left.buffer.stride);
+        memcpy(left_dest, left_src, margin * sizeof(uint32_t));
+        uint32_t *right_src = left_src + 2 * st.corner_size;
+        uint32_t *right_dest = (uint32_t*)(decs.right.buffer.data.front + y * decs.right.buffer.stride);
+        memcpy(right_dest, right_src, margin * sizeof(uint32_t));
     }
+
+    // lower corners
+    size_t src_height = st.corner_size - margin;
+    size_t dest_top = decs.left.buffer.height > src_height ? decs.left.buffer.height - src_height : 0;
+    size_t src_top = st.corner_size + margin;
+    for (size_t src_y = src_top, dest_y = dest_top; src_y < src_top + src_height && dest_y < decs.left.buffer.height; src_y++, dest_y++) {
+        uint32_t *s = st.data + st.stride * src_y;
+        uint32_t *d = (uint32_t*)(decs.left.buffer.data.front + dest_y * decs.left.buffer.stride);
+        memcpy(d, s, margin * sizeof(uint32_t));
+        s += 2 * st.corner_size;
+        d = (uint32_t*)(decs.right.buffer.data.front + dest_y * decs.left.buffer.stride);
+        memcpy(d, s, margin * sizeof(uint32_t));
+    }
+
+    // sides
+    size_t limit = decs.left.buffer.height > src_height ? decs.left.buffer.height - src_height : 0;
+    for (size_t dest_y = st.corner_size, src_y = 0; dest_y < limit; dest_y++, src_y = (src_y + 1) % margin) {
+        uint32_t *src = st.data + (st.corner_size + src_y) * st.stride;
+        uint32_t *left_dest = (uint32_t*)(decs.left.buffer.data.front + dest_y * decs.left.buffer.stride);
+        memcpy(left_dest, src, margin * sizeof(uint32_t));
+        src += 2 * st.corner_size;
+        uint32_t *right_dest = (uint32_t*)(decs.right.buffer.data.front + dest_y * decs.right.buffer.stride);
+        memcpy(right_dest, src, margin * sizeof(uint32_t));
+    }
+
+#define copy(which) for (uint32_t *src = (uint32_t*)decs.which.buffer.data.front, *dest = (uint32_t*)decs.which.buffer.data.back; src < (uint32_t*)(decs.which.buffer.data.front + decs.which.buffer.size_in_bytes); src++, dest++) *dest = (A(*src) / 2 ) << 24;
+    copy(left); copy(bottom); copy(right);
+#undef copy
+
 }
+#undef st
 
 static bool
 create_shm_buffers(_GLFWwindow* window) {
-    int scale = window->wl.scale;
-    if (scale < 1) scale = 1;
+    const unsigned scale = window->wl.scale >= 1 ? window->wl.scale : 1;
 
     const size_t vertical_width = decs.metrics.width, vertical_height = window->wl.height + decs.metrics.top;
     const size_t horizontal_height = decs.metrics.width, horizontal_width = window->wl.width + 2 * decs.metrics.width;
@@ -111,8 +270,9 @@ create_shm_buffers(_GLFWwindow* window) {
     a(top); a(left); a(bottom); a(right);
 #undef a
     wl_shm_pool_destroy(pool);
+    create_shadow_tile(window);
     render_title_bar(window, true);
-    render_edge(&decs.left.buffer); render_edge(&decs.bottom.buffer); render_edge(&decs.right.buffer);
+    render_edges(window);
     return true;
 }
 
@@ -211,6 +371,8 @@ void
 free_all_csd_resources(_GLFWwindow *window) {
     free_csd_surfaces(window);
     free_csd_buffers(window);
+    if (decs.shadow_tile.data) free(decs.shadow_tile.data);
+    decs.shadow_tile.data = NULL;
 }
 
 void
@@ -227,4 +389,18 @@ change_csd_title(_GLFWwindow *window) {
         update_title_bar(window);
         damage_csd(top, decs.top.buffer.front);
     }
+}
+
+void
+set_csd_window_geometry(_GLFWwindow *window, int32_t *width, int32_t *height) {
+    bool has_csd = window->decorated && !window->wl.decorations.serverSide && window->wl.decorations.left.surface && !window->wl.fullscreened;
+    bool size_specified_by_compositor = *width > 0 && *height > 0;
+    if (!size_specified_by_compositor) { *width = window->wl.width; *height = window->wl.height; }
+    struct { int32_t x, y, width, height; } geometry = {.x = 0, .y = 0, .width = *width, .height = *height};
+    if (has_csd) {
+        int32_t visible_titlebar_height = decs.metrics.top - decs.metrics.width;
+        geometry.y = -visible_titlebar_height;
+        *height -= visible_titlebar_height;
+    }
+    xdg_surface_set_window_geometry(window->wl.xdg.surface, geometry.x, geometry.y, geometry.width, geometry.height);
 }

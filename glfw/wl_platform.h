@@ -172,6 +172,11 @@ typedef struct _GLFWwindowWayland
         struct {
             unsigned int width, top, horizontal, vertical;
         } metrics;
+
+        struct {
+            uint32_t *data;
+            size_t for_decoration_size, stride, segments, corner_size;
+        } shadow_tile;
     } decorations;
 
     struct {
@@ -179,6 +184,10 @@ typedef struct _GLFWwindowWayland
         void(*callback)(unsigned long long id);
         struct wl_callback *current_wl_callback;
     } frameCallbackData;
+
+    struct {
+        int32_t width, height;
+    } size_before_maximize;
 
 } _GLFWwindowWayland;
 

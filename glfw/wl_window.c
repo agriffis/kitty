@@ -237,8 +237,6 @@ clipboard_mime(void) {
 }
 
 static void dispatchChangesAfterConfigure(_GLFWwindow *window, int32_t width, int32_t height) {
-    if (width <= 0) width = window->wl.width;
-    if (height <= 0) height = window->wl.height;
     bool size_changed = width != window->wl.width || height != window->wl.height;
     bool scale_changed = checkScaleChange(window);
 
@@ -427,6 +425,18 @@ static void xdgToplevelHandleConfigure(void* data,
                 break;
         }
     }
+    bool window_maximized = !window->wl.maximized && maximized;
+    bool window_unmaximized = window->wl.maximized && !maximized;
+    if (window_maximized) {
+        window->wl.size_before_maximize.width = window->wl.width;
+        window->wl.size_before_maximize.height = window->wl.height;
+    } else if (window_unmaximized && window->wl.size_before_maximize.width > 0 && window->wl.size_before_maximize.height > 0) {
+        width = window->wl.size_before_maximize.width;
+        height = window->wl.size_before_maximize.height;
+        window->wl.size_before_maximize.width = 0;
+        window->wl.size_before_maximize.height = 0;
+    }
+    window->wl.maximized = maximized;
 
     if (width != 0 && height != 0)
     {
@@ -444,12 +454,8 @@ static void xdgToplevelHandleConfigure(void* data,
         }
     }
     window->wl.fullscreened = fullscreen;
-    if (!fullscreen) {
-        if (window->decorated && !window->wl.decorations.serverSide && window->wl.decorations.left.surface) {
-            width -= window->wl.decorations.metrics.horizontal;
-            height -= window->wl.decorations.metrics.vertical;
-        }
-    }
+    set_csd_window_geometry(window, &width, &height);
+    wl_surface_commit(window->wl.surface);
     dispatchChangesAfterConfigure(window, width, height);
     _glfwInputWindowFocus(window, activated);
     ensure_csd_resources(window);
@@ -544,6 +550,7 @@ static bool createXdgSurface(_GLFWwindow* window)
     }
     else if (window->wl.maximized)
     {
+        window->wl.maximized = false;
         xdg_toplevel_set_maximized(window->wl.xdg.toplevel);
         setIdleInhibitor(window, false);
         setXdgDecorations(window);
@@ -707,8 +714,8 @@ int _glfwPlatformCreateWindow(_GLFWwindow* window,
                               const _GLFWctxconfig* ctxconfig,
                               const _GLFWfbconfig* fbconfig)
 {
-    window->wl.decorations.metrics.width = 4;
-    window->wl.decorations.metrics.top = 24;
+    window->wl.decorations.metrics.width = 12;
+    window->wl.decorations.metrics.top = 36;
     window->wl.decorations.metrics.horizontal = 2 * window->wl.decorations.metrics.width;
     window->wl.decorations.metrics.vertical = window->wl.decorations.metrics.width + window->wl.decorations.metrics.top;
     window->wl.transparent = fbconfig->transparent;
@@ -956,7 +963,6 @@ void _glfwPlatformRestoreWindow(_GLFWwindow* window)
         // minimized, so there is nothing to do in this case.
     }
     _glfwInputWindowMonitor(window, NULL);
-    window->wl.maximized = false;
 }
 
 void _glfwPlatformMaximizeWindow(_GLFWwindow* window)
@@ -965,7 +971,6 @@ void _glfwPlatformMaximizeWindow(_GLFWwindow* window)
     {
         xdg_toplevel_set_maximized(window->wl.xdg.toplevel);
     }
-    window->wl.maximized = true;
 }
 
 void _glfwPlatformShowWindow(_GLFWwindow* window)
