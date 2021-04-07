@@ -13,6 +13,7 @@
 #include <string.h>
 #include <stdlib.h>
 
+#define debug(...) if (_glfw.hints.init.debugRendering) fprintf(stderr, __VA_ARGS__);
 #define decs window->wl.decorations
 
 #define ARGB(a, r, g, b) (((a) << 24) | ((r) << 16) | ((g) << 8) | (b))
@@ -114,6 +115,16 @@ alloc_buffer_pair(_GLFWWaylandBufferPair *pair, struct wl_shm_pool *pool, uint8_
 }
 
 #define st decs.shadow_tile
+
+void
+initialize_csd_metrics(_GLFWwindow *window) {
+    decs.metrics.width = 12;
+    decs.metrics.top = 36;
+    decs.metrics.visible_titlebar_height = window->wl.decorations.metrics.top - window->wl.decorations.metrics.width;
+    decs.metrics.horizontal = 2 * window->wl.decorations.metrics.width;
+    decs.metrics.vertical = window->wl.decorations.metrics.width + window->wl.decorations.metrics.top;
+}
+
 static size_t
 create_shadow_tile(_GLFWwindow *window) {
     const size_t margin = decs.bottom.buffer.height;
@@ -273,6 +284,7 @@ create_shm_buffers(_GLFWwindow* window) {
     create_shadow_tile(window);
     render_title_bar(window, true);
     render_edges(window);
+    debug("Created decoration buffers at scale: %u vertical_height: %zu horizontal_width: %zu\n", scale, vertical_height, horizontal_width);
     return true;
 }
 
@@ -376,12 +388,6 @@ free_all_csd_resources(_GLFWwindow *window) {
 }
 
 void
-resize_csd(_GLFWwindow *window) {
-    if (!window->decorated || window->wl.decorations.serverSide) return;
-    ensure_csd_resources(window);
-}
-
-void
 change_csd_title(_GLFWwindow *window) {
     if (!window->decorated || window->wl.decorations.serverSide) return;
     if (ensure_csd_resources(window)) return;  // CSD were re-rendered for other reasons
@@ -393,16 +399,17 @@ change_csd_title(_GLFWwindow *window) {
 
 void
 set_csd_window_geometry(_GLFWwindow *window, int32_t *width, int32_t *height) {
-    bool has_csd = window->decorated && !window->wl.decorations.serverSide && window->wl.decorations.left.surface && !window->wl.fullscreened;
+    bool has_csd = window->decorated && !window->wl.decorations.serverSide && window->wl.decorations.left.surface && !(window->wl.toplevel_states & TOPLEVEL_STATE_FULLSCREEN);
     bool size_specified_by_compositor = *width > 0 && *height > 0;
-    if (!size_specified_by_compositor) { *width = window->wl.width; *height = window->wl.height; }
-    int32_t scale = window->wl.scale >= 1 ? window->wl.scale : 1;
-    struct { int32_t x, y, width, height; } geometry = {.x = 0, .y = 0, .width = scale * *width, .height = scale * *height};
-    if (has_csd) {
-        // I dont know why GNOME wants geometry.x to be zero, but thats what works
-        geometry.y = -decs.metrics.width * scale;
-        int32_t visible_titlebar_height = decs.metrics.top - decs.metrics.width;
-        *height -= visible_titlebar_height;
+    if (!size_specified_by_compositor) {
+        *width = window->wl.user_requested_content_size.width;
+        *height = window->wl.user_requested_content_size.height;
+        if (has_csd) *height += decs.metrics.visible_titlebar_height;
     }
-    xdg_surface_set_window_geometry(window->wl.xdg.surface, geometry.x, geometry.y, geometry.width, geometry.height);
+    decs.geometry.x = 0; decs.geometry.y = 0;
+    decs.geometry.width = *width; decs.geometry.height = *height;
+    if (has_csd) {
+        decs.geometry.y = -decs.metrics.visible_titlebar_height;
+        *height -= decs.metrics.visible_titlebar_height;
+    }
 }

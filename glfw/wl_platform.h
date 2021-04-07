@@ -111,6 +111,22 @@ typedef struct _GLFWWaylandCSDEdge {
     int x, y;
 } _GLFWWaylandCSDEdge;
 
+typedef enum WaylandWindowState {
+
+    TOPLEVEL_STATE_NONE = 0,
+    TOPLEVEL_STATE_MAXIMIZED = 1,
+    TOPLEVEL_STATE_FULLSCREEN = 2,
+	TOPLEVEL_STATE_RESIZING = 4,
+	TOPLEVEL_STATE_ACTIVATED = 8,
+	TOPLEVEL_STATE_TILED_LEFT = 16,
+	TOPLEVEL_STATE_TILED_RIGHT = 32,
+	TOPLEVEL_STATE_TILED_TOP = 64,
+	TOPLEVEL_STATE_TILED_BOTTOM = 128,
+} WaylandWindowState;
+
+
+static const WaylandWindowState TOPLEVEL_STATE_DOCKED = TOPLEVEL_STATE_MAXIMIZED | TOPLEVEL_STATE_FULLSCREEN | TOPLEVEL_STATE_TILED_TOP | TOPLEVEL_STATE_TILED_LEFT | TOPLEVEL_STATE_TILED_RIGHT | TOPLEVEL_STATE_TILED_BOTTOM;
+
 
 // Wayland-specific per-window data
 //
@@ -118,7 +134,6 @@ typedef struct _GLFWwindowWayland
 {
     int                         width, height;
     bool                        visible;
-    bool                        maximized;
     bool                        hovered;
     bool                        transparent;
     struct wl_surface*          surface;
@@ -152,8 +167,6 @@ typedef struct _GLFWwindowWayland
 
     struct zwp_idle_inhibitor_v1*          idleInhibitor;
 
-    bool                        fullscreened;
-
     struct {
         bool serverSide;
         _GLFWdecorationSideWayland focus;
@@ -170,8 +183,12 @@ typedef struct _GLFWwindowWayland
         } for_window_state;
 
         struct {
-            unsigned int width, top, horizontal, vertical;
+            unsigned int width, top, horizontal, vertical, visible_titlebar_height;
         } metrics;
+
+        struct {
+            int32_t x, y, width, height;
+        } geometry;
 
         struct {
             uint32_t *data;
@@ -187,7 +204,10 @@ typedef struct _GLFWwindowWayland
 
     struct {
         int32_t width, height;
-    } size_before_maximize;
+    } user_requested_content_size;
+
+    uint32_t toplevel_states;
+    bool maximize_on_first_show;
 
 } _GLFWwindowWayland;
 
