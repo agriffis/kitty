@@ -47,13 +47,23 @@ To update |kitty|, :doc:`follow the instructions <binary>`.
 - Double clicking on empty tab bar area now opens a new tab (:iss:`3201`)
 
 - When passing a directory or a non-executable file as the program to run to
-  kitty open it with the shell, instead of just failing.
+  kitty opens it with the shell or by parsing the shebang, instead of just failing.
 
 - Linux: Fix rendering of emoji followed by the graphics variation selector not
   being colored with some fonts (:iss:`3211`)
 
 - Unicode input: Fix using index in select by name mode not working for indices
   larger than 16. Also using an index does not filter the list of matches. (:pull:`3219`)
+
+- Wayland: Add support for the text input protocol (:iss:`3410`)
+
+- Wayland: Fix mouse handling when using client side decorations
+
+- Wayland: Fix un-maximizing a window not restoring its size to what it was
+  before being maximized
+
+- GNOME/Wayland: Improve window decorations the titlebar now shows the window
+  title. Allow running under Wayland on GNOME by default. (:iss:`3284`)
 
 - Panel kitten: Allow setting WM_CLASS (:iss:`3233`)
 
@@ -146,16 +156,6 @@ To update |kitty|, :doc:`follow the instructions <binary>`.
 
 - Wayland: Fix key repeat being stopped by the release of an unrelated key
   (:iss:`2191`)
-
-- Wayland: Add support for the text input protocol (:iss:`3410`)
-
-- Wayland: Fix mouse handling when using client side decorations
-
-- Wayland: Fix un-maximizing a window not restoring its size to what it was
-  before being maximized
-
-- GNOME/Wayland: Improve window decorations the titlebar now shows the window
-  title (:iss:`3284`)
 
 - Add an option, :opt:`detect_urls` to control whether kitty will detect URLs
   when the mouse moves over them (:pull:`3118`)
