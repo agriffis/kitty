@@ -17,13 +17,15 @@ extern PyTypeObject Line_Type;
 static inline void
 add_segment(HistoryBuf *self) {
     self->num_segments += 1;
-    self->segments = PyMem_Realloc(self->segments, sizeof(HistoryBufSegment) * self->num_segments);
+    self->segments = realloc(self->segments, sizeof(HistoryBufSegment) * self->num_segments);
     if (self->segments == NULL) fatal("Out of memory allocating new history buffer segment");
     HistoryBufSegment *s = self->segments + self->num_segments - 1;
-    s->cpu_cells = PyMem_Calloc(self->xnum * SEGMENT_SIZE, sizeof(CPUCell));
-    s->gpu_cells = PyMem_Calloc(self->xnum * SEGMENT_SIZE, sizeof(GPUCell));
-    s->line_attrs = PyMem_Calloc(SEGMENT_SIZE, sizeof(line_attrs_type));
-    if (s->cpu_cells == NULL || s->gpu_cells == NULL || s->line_attrs == NULL) fatal("Out of memory allocating new history buffer segment");
+    const size_t cpu_cells_size = self->xnum * SEGMENT_SIZE * sizeof(CPUCell);
+    const size_t gpu_cells_size = self->xnum * SEGMENT_SIZE * sizeof(GPUCell);
+    s->cpu_cells = calloc(1, cpu_cells_size + gpu_cells_size + SEGMENT_SIZE * sizeof(line_attrs_type));
+    if (!s->cpu_cells) fatal("Out of memory allocating new history buffer segment");
+    s->gpu_cells = (GPUCell*)(((uint8_t*)s->cpu_cells) + cpu_cells_size);
+    s->line_attrs = (line_attrs_type*)(((uint8_t*)s->gpu_cells) + gpu_cells_size);
 }
 
 static inline index_type
@@ -60,11 +62,11 @@ static inline PagerHistoryBuf*
 alloc_pagerhist(size_t pagerhist_sz) {
     PagerHistoryBuf *ph;
     if (!pagerhist_sz) return NULL;
-    ph = PyMem_Calloc(1, sizeof(PagerHistoryBuf));
+    ph = calloc(1, sizeof(PagerHistoryBuf));
     if (!ph) return NULL;
     size_t sz = MIN(1024u * 1024u, pagerhist_sz);
     ph->ringbuf = ringbuf_new(sz);
-    if (!ph->ringbuf) { PyMem_Free(ph); return NULL; }
+    if (!ph->ringbuf) { free(ph); return NULL; }
     ph->maximum_size = pagerhist_sz;
     return ph;
 }
@@ -72,7 +74,7 @@ alloc_pagerhist(size_t pagerhist_sz) {
 static inline void
 free_pagerhist(HistoryBuf *self) {
     if (self->pagerhist && self->pagerhist->ringbuf) ringbuf_free((ringbuf_t*)&self->pagerhist->ringbuf);
-    PyMem_Free(self->pagerhist);
+    free(self->pagerhist);
     self->pagerhist = NULL;
 }
 
@@ -125,12 +127,8 @@ new(PyTypeObject *type, PyObject *args, PyObject UNUSED *kwds) {
 static void
 dealloc(HistoryBuf* self) {
     Py_CLEAR(self->line);
-    for (size_t i = 0; i < self->num_segments; i++) {
-        PyMem_Free(self->segments[i].cpu_cells);
-        PyMem_Free(self->segments[i].gpu_cells);
-        PyMem_Free(self->segments[i].line_attrs);
-    }
-    PyMem_Free(self->segments);
+    for (size_t i = 0; i < self->num_segments; i++) free(self->segments[i].cpu_cells);
+    free(self->segments);
     free_pagerhist(self);
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
@@ -351,11 +349,11 @@ static void
 pagerhist_rewrap_to(HistoryBuf *self, index_type cells_in_line) {
     PagerHistoryBuf *ph = self->pagerhist;
     if (!ph->ringbuf || !ringbuf_bytes_used(ph->ringbuf)) return;
-    PagerHistoryBuf *nph = PyMem_Calloc(sizeof(PagerHistoryBuf), 1);
+    PagerHistoryBuf *nph = calloc(sizeof(PagerHistoryBuf), 1);
     if (!nph) return;
     nph->maximum_size = ph->maximum_size;
     nph->ringbuf = ringbuf_new(MIN(ph->maximum_size, ringbuf_capacity(ph->ringbuf) + 4096));
-    if (!nph->ringbuf) { PyMem_Free(nph); return ; }
+    if (!nph->ringbuf) { free(nph); return ; }
     ssize_t ch_width = 0;
     unsigned count;
     uint8_t record[8];
