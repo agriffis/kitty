@@ -370,8 +370,8 @@ glfw_xkb_update_masks(_GLFWXKBData *xkb) {
         S(super, XKB_MOD_NAME_LOGO);
     }
 #undef S
-    debug("Modifier indices alt:%u super:%u hyper:%u meta:%u numlock:%u\n",
-            xkb->altIdx, xkb->superIdx, xkb->hyperIdx, xkb->metaIdx, xkb->numLockIdx);
+    debug("Modifier indices alt: 0x%x super: 0x%x hyper: 0x%x meta: 0x%x numlock: 0x%x shift: 0x%x capslock: 0x%x\n",
+            xkb->altIdx, xkb->superIdx, xkb->hyperIdx, xkb->metaIdx, xkb->numLockIdx, xkb->shiftIdx, xkb->capsLockIdx);
 }
 
 
@@ -711,7 +711,7 @@ glfw_xkb_handle_key_event(_GLFWwindow *window, _GLFWXKBData *xkb, xkb_keycode_t 
 #else
     ibus_keycode -= 8;
 #endif
-    debug("%s xkb_keycode: 0x%x ", action == GLFW_RELEASE ? "Release" : "Press", xkb_keycode);
+    debug("%s xkb_keycode: 0x%x ", action == GLFW_RELEASE ? "\x1b[32mRelease\x1b[m" : "\x1b[31mPress\x1b[m", xkb_keycode);
     XKBStateGroup *sg = &xkb->states;
     int num_syms = xkb_state_key_get_syms(sg->state, code_for_sym, &syms);
     int num_clean_syms = xkb_state_key_get_syms(sg->clean_state, code_for_sym, &clean_syms);
@@ -756,6 +756,9 @@ glfw_xkb_handle_key_event(_GLFWwindow *window, _GLFWXKBData *xkb, xkb_keycode_t 
     }
     if (xkb_sym == XKB_KEY_ISO_First_Group || xkb_sym == XKB_KEY_ISO_Last_Group || xkb_sym == XKB_KEY_ISO_Next_Group || xkb_sym == XKB_KEY_ISO_Prev_Group || xkb_sym == XKB_KEY_Mode_switch) {
       return;
+    }
+    if (sg->modifiers & GLFW_MOD_NUM_LOCK && XKB_KEY_KP_Space <= xkb_sym && xkb_sym <= XKB_KEY_KP_9) {
+        xkb_sym = xkb_state_key_get_one_sym(sg->state, code_for_sym);
     }
     int num_default_syms = xkb_state_key_get_syms(sg->default_state, code_for_sym, &default_syms);
     if (num_default_syms > 0) alternate_xkb_sym = default_syms[0];
