@@ -7,6 +7,10 @@ To update |kitty|, :doc:`follow the instructions <binary>`.
 0.20.2 [future]
 ----------------------
 
+- A new protocol extension to :ref:`unscroll <unscroll>` text from the
+  scrollback buffer onto the screen. Useful, for example, to restore
+  the screen after showing completions below the shell prompt.
+
 - Linux: Fix binary kitty builds not able to load fonts in WOFF2 format
   (:iss:`3506`)
 
@@ -18,6 +22,15 @@ To update |kitty|, :doc:`follow the instructions <binary>`.
 
 - Fix removal of inactive tab that is before the currently active tab causing
   the highlighted tab to be incorrect (:iss:`3516`)
+
+- icat kitten: Respect EXIF orientation when displaying JPEG images
+  (:iss:`3518`)
+
+- GNOME: Fix maximize state not being remembered when focus changes and window
+  decorations are hidden (:iss:`3507`)
+
+- Fix reading :option:`kitty --session` from ``STDIN`` not working when the
+  :option:`kitty --detach` option is used (:iss:`3523`)
 
 
 0.20.1 [2021-04-19]
