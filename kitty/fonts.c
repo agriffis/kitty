@@ -325,33 +325,6 @@ sprite_tracker_current_layout(FONTS_DATA_HANDLE data, unsigned int *x, unsigned 
     *x = fg->sprite_tracker.xnum; *y = fg->sprite_tracker.ynum; *z = fg->sprite_tracker.z;
 }
 
-void
-clear_sprite_map(Font *font) {
-#define CLEAR(s) s->filled = false; s->rendered = false; s->colored = false; s->glyph = 0; zero_at_ptr(&s->extra_glyphs); s->x = 0; s->y = 0; s->z = 0; s->ligature_index = 0;
-    SpritePosition *s;
-    for (size_t i = 0; i < arraysz(font->sprite_map); i++) {
-        s = font->sprite_map + i;
-        CLEAR(s);
-        while ((s = s->next)) {
-            CLEAR(s);
-        }
-    }
-#undef CLEAR
-}
-
-void
-clear_special_glyph_cache(Font *font) {
-#define CLEAR(s) s->data = 0; s->glyph = 0;
-    SpecialGlyphCache *s;
-    for (size_t i = 0; i < arraysz(font->special_glyph_cache); i++) {
-        s = font->special_glyph_cache + i;
-        CLEAR(s);
-        while ((s = s->next)) {
-            CLEAR(s);
-        }
-    }
-#undef CLEAR
-}
 
 static void
 sprite_tracker_set_layout(GPUSpriteTracker *sprite_tracker, unsigned int cell_width, unsigned int cell_height) {
@@ -732,7 +705,7 @@ extract_cell_from_canvas(FontGroup *fg, unsigned int i, unsigned int num_cells) 
 
 static inline void
 render_group(FontGroup *fg, unsigned int num_cells, unsigned int num_glyphs, CPUCell *cpu_cells, GPUCell *gpu_cells, hb_glyph_info_t *info, hb_glyph_position_t *positions, Font *font, glyph_index glyph, ExtraGlyphs *extra_glyphs, bool center_glyph) {
-    static SpritePosition* sprite_position[16];
+    static SpritePosition* sprite_position[MAX_NUM_EXTRA_GLYPHS * 2];
     int error = 0;
     num_cells = MIN(arraysz(sprite_position), num_cells);
     for (unsigned int i = 0; i < num_cells; i++) {
