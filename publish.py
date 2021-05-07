@@ -321,7 +321,9 @@ class GitHub(Base):  # {{{
                 'tag_name': self.current_tag_name,
                 'target_commitish': 'master',
                 'name': 'version %s' % self.version,
-                'body': 'Release version %s. GPG key used for signing tarballs is: https://calibre-ebook.com/signatures/kovid.gpg' % self.version,
+                'body': f'Release version {self.version}.'
+                ' For changelog, see https://sw.kovidgoyal.net/kitty/changelog.html'
+                ' GPG key used for signing tarballs is: https://calibre-ebook.com/signatures/kovid.gpg',
                 'draft': False,
                 'prerelease': False
             }))
@@ -350,12 +352,12 @@ def run_upload(args: Any) -> None:
         if not os.path.exists(path):
             raise SystemExit(f'The installer {path} does not exist')
         files[path] = desc
-        signatures[path] = desc + ' GPG signature'
+        signatures[path] = f'GPG signature for {desc}'
     files[f'build/kitty-{version}.tar.xz'] = 'Source code'
     files[f'build/kitty-{version}.tar.xz.sig'] = 'Source code GPG signature'
     for path, desc in signatures.items():
         sign_file(path)
-        files[path + '.sig'] = desc + ' GPG signature'
+        files[path + '.sig'] = desc
     for f in files:
         if not os.path.exists(f):
             raise SystemExit(f'The release artifact {f} does not exist')
