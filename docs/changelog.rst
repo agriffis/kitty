@@ -15,6 +15,16 @@ To update |kitty|, :doc:`follow the instructions <binary>`.
 - Fix a regression in 0.20.0 that sent incorrect bytes for the :kbd:`F1-F4` keys
   in rmkx mode (:iss:`3586`)
 
+- macOS: When the Apple Color Emoji font lacks an emoji glyph search for it in other
+  installed fonts (:iss:`3591`)
+
+- Add a few more special commandline arguments for the launch command. Now all
+  ``KITTY_PIPE_DATA`` is also available via command line argument substitution
+  (:iss:`3593`)
+
+- Fix dynamically changing the background color in a window causing rendering
+  artifacts in the tab bar (:iss:`3595`)
+
 
 0.20.3 [2021-05-06]
 ----------------------
