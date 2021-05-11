@@ -736,27 +736,37 @@ class Boss:
                 if t is not None:
                     t.relayout_borders()
 
-    def dispatch_action(self, key_action: KeyAction) -> bool:
+    def dispatch_action(
+        self,
+        key_action: KeyAction,
+        window_for_dispatch: Optional[Window] = None,
+        dispatch_type: str = 'KeyPress'
+    ) -> bool:
+
+        def report_match(f: Callable) -> None:
+            if self.args.debug_keyboard:
+                print(f'\x1b[35m{dispatch_type}\x1b[m matched action:', func_name(f), flush=True)
+
         if key_action is not None:
             f = getattr(self, key_action.func, None)
             if f is not None:
-                if self.args.debug_keyboard:
-                    print('Keypress matched action:', func_name(f))
+                report_match(f)
                 passthrough = f(*key_action.args)
                 if passthrough is not True:
                     return True
-        tab = self.active_tab
-        if tab is None:
-            return False
-        window = self.active_window
-        if window is None:
+        if window_for_dispatch is None:
+            tab = self.active_tab
+            window = self.active_window
+        else:
+            window = window_for_dispatch
+            tab = window.tabref()
+        if tab is None or window is None:
             return False
         if key_action is not None:
             f = getattr(tab, key_action.func, getattr(window, key_action.func, None))
             if f is not None:
                 passthrough = f(*key_action.args)
-                if self.args.debug_keyboard:
-                    print('Keypress matched action:', func_name(f))
+                report_match(f)
                 if passthrough is not True:
                     return True
         return False
@@ -1102,8 +1112,14 @@ class Boss:
         text = get_clipboard_string()
         self.paste_to_active_window(text)
 
+    def current_primary_selection(self) -> str:
+        return get_primary_selection() if supports_primary_selection else ''
+
+    def current_primary_selection_or_clipboard(self) -> str:
+        return get_primary_selection() if supports_primary_selection else get_clipboard_string()
+
     def paste_from_selection(self) -> None:
-        text = get_primary_selection() if supports_primary_selection else get_clipboard_string()
+        text = self.current_primary_selection_or_clipboard()
         self.paste_to_active_window(text)
 
     def set_primary_selection(self) -> None:

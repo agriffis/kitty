@@ -4,10 +4,29 @@ Changelog
 |kitty| is a feature-rich, cross-platform, *fast*, GPU based terminal.
 To update |kitty|, :doc:`follow the instructions <binary>`.
 
-0.20.4 [future]
+0.21.0 [future]
 ----------------------
 
+- Allow clicking URLs to open them without needing to also hold
+  :kbd:`ctrl+shift`
+
+- Allow remapping all mouse button press/release events to perform arbitrary
+  actions. :ref:`See details <conf-kitty-mouse.mousemap>`.
+
 - Support infinite length ligatures (:iss:`3504`)
+
+- **Backward incompatibility**: The options to control which modifiers keys to
+  press for various mouse actions have been removed, if you used these options,
+  you will need to replace them with configuration using the new
+  :ref:`mouse actions framework <conf-kitty-mouse.mousemap>` as they will be
+  ignored. The options were: ``terminal_select_modifiers``,
+  ``rectangle_select_modifiers`` and ``open_url_modifiers``.
+
+- Add a configurable mouse action to select from the clicked point to the end of the line.
+  (:iss:`3585`)
+
+- Add the ability to unscroll the screen to the ``kitty @ scroll-window``
+  remote control command (:iss:`3604`)
 
 - Unicode input kitten: Fix a regression in 0.20.0 that broke keyboard handling
   when the num lock or caps lock modifiers were engaged. (:iss:`3587`)
@@ -705,7 +724,7 @@ To update |kitty|, :doc:`follow the instructions <binary>`.
   beam and underline cursors (:iss:`2337` and :pull:`2342`)
 
 - When the application running in the terminal grabs the mouse, pass middle
-  clicks to the application unless :opt:`terminal_select_modifiers` are
+  clicks to the application unless `terminal_select_modifiers` are
   pressed (:iss:`2368`)
 
 - A new ``copy_and_clear_or_interrupt`` function (:iss:`2403`)
@@ -985,7 +1004,7 @@ To update |kitty|, :doc:`follow the instructions <binary>`.
   the mouse pointer shape when the terminal programs grabs the pointer
   (:iss:`1808`)
 
-- Add an option :opt:`terminal_select_modifiers` to control which modifiers
+- Add an option `terminal_select_modifiers` to control which modifiers
   are used to override mouse selection even when a terminal application has
   grabbed the mouse (:iss:`1774`)
 
