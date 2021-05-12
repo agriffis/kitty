@@ -25,17 +25,20 @@ To update |kitty|, :doc:`follow the instructions <binary>`.
 - Add a configurable mouse action to select from the clicked point to the end of the line.
   (:iss:`3585`)
 
-- Add the ability to unscroll the screen to the ``kitty @ scroll-window``
+- Add the ability to un-scroll the screen to the ``kitty @ scroll-window``
   remote control command (:iss:`3604`)
 
 - Unicode input kitten: Fix a regression in 0.20.0 that broke keyboard handling
-  when the num lock or caps lock modifiers were engaged. (:iss:`3587`)
+  when the NumLock or CapsLock modifiers were engaged. (:iss:`3587`)
 
 - Fix a regression in 0.20.0 that sent incorrect bytes for the :kbd:`F1-F4` keys
   in rmkx mode (:iss:`3586`)
 
 - macOS: When the Apple Color Emoji font lacks an emoji glyph search for it in other
   installed fonts (:iss:`3591`)
+
+- macOS: Fix rendering getting stuck on some machines after sleep/screensaver
+  (:iss:`2016`)
 
 - Add a few more special commandline arguments for the launch command. Now all
   ``KITTY_PIPE_DATA`` is also available via command line argument substitution
